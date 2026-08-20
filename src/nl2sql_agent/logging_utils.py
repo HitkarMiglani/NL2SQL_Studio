@@ -13,7 +13,7 @@ from .config import settings
 
 _request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
-_CONFIGURED = False
+_CONFIGURED = True
 
 
 def new_request_id() -> str:

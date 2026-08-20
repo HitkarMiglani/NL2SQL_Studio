@@ -4,7 +4,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def _get_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -106,3 +108,4 @@ class Settings:
 
 
 settings = Settings.from_env()
+print(f"Loaded settings: {settings}")
