@@ -4,10 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NL2SQL Studio</title>
+    <meta name="color-scheme" content="light dark" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -31,374 +32,291 @@
     <script src="/static/app.js" defer></script>
   </head>
   <body>
-    <div class="app">
-      <aside class="panel panel--config" id="configPanel">
-        <div class="config-head">
-          <div class="brand">
-            <div class="brand-mark">NL</div>
-            <div>
-              <h1>NL2SQL Studio</h1>
-              <p class="subtitle">Enterprise question to insight</p>
-            </div>
+    <div class="app-shell" id="appShell">
+      <div class="nav-backdrop" id="navBackdrop"></div>
+
+      <nav class="nav-rail" id="navRail" aria-label="Main navigation">
+        <div class="nav-rail__brand">
+          <span class="brand-mark" aria-hidden="true">NL</span>
+          <div class="nav-rail__brand-text">
+            <strong>NL2SQL Studio</strong>
+            <span>Question to insight</span>
           </div>
-          <button
-            id="configToggle"
-            class="icon-btn config-toggle"
-            type="button"
-            aria-label="Collapse sidebar"
-            aria-pressed="false"
-          >
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M15 6l-6 6 6 6" />
+        </div>
+
+        <ul class="nav-rail__list" id="navList">
+          <li>
+            <button type="button" class="nav-item active" data-page="workspace">
+              <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h16" /></svg>
+              <span>Workspace</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-page="history">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 8v5l3 2" /><circle cx="12" cy="12" r="9" />
+              </svg>
+              <span>History</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-page="schema">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 5h16v5H4zM4 14h16v5H4z" />
+              </svg>
+              <span>Schema</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-page="settings">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.3.9a7 7 0 0 0-2.1-1.2L14 3h-4l-.5 2.5a7 7 0 0 0-2.1 1.2l-2.3-.9-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.3-.9a7 7 0 0 0 2.1 1.2L10 21h4l.5-2.5a7 7 0 0 0 2.1-1.2l2.3.9 2-3.4-2-1.6c.07-.4.1-.8.1-1.2z"
+                />
+              </svg>
+              <span>Settings</span>
+            </button>
+          </li>
+        </ul>
+
+        <div class="nav-rail__footer">
+          <button type="button" class="nav-item" id="themeToggle">
+            <svg viewBox="0 0 24 24" id="themeIcon">
+              <path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.5A7 7 0 0 1 12 3z" />
             </svg>
+            <span id="themeLabel">Dark mode</span>
           </button>
-        </div>
-
-        <div class="config-body">
-          <div class="pill" id="envStatus">Ready</div>
-
-          <div class="field">
-            <label for="provider">
-              <span class="label-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path
-                    d="M12 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8zm0 10c-3.3 0-6 2-6 4.5V21h12v-3.5c0-2.5-2.7-4.5-6-4.5z"
-                  />
-                </svg>
-              </span>
-              LLM Provider
-            </label>
-            <select id="provider" class="glass-input">
-              <option value="gemini">Gemini</option>
-              <option value="groq">Groq</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="apiKey">
-              <span class="label-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path
-                    d="M7 14a4 4 0 1 1 7.3 2H21v3h-3v2h-2v-2h-2.7a4 4 0 0 1-6.3-5z"
-                  />
-                </svg>
-              </span>
-              API Key
-            </label>
-            <div class="input-group">
-              <input
-                id="apiKey"
-                type="password"
-                class="glass-input"
-                placeholder="Paste key (optional)"
-                autocomplete="off"
-              />
-              <button
-                id="toggleApiKey"
-                class="icon-btn"
-                type="button"
-                aria-label="Toggle API key visibility"
-              >
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path
-                    d="M12 5c5 0 9 4 10 7c-1 3-5 7-10 7S3 15 2 12c1-3 5-7 10-7zm0 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8z"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div class="hint">
-              If empty, the server uses environment variables.
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="topK">
-              <span class="label-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M4 6h16v12H4zM4 10h16M9 6v12" />
-                </svg>
-              </span>
-              Schema top-k
-              <span
-                class="tooltip"
-                data-tooltip="Controls how many database tables the AI searches when building your query. Higher = more context, slower response."
-                aria-label="Schema top-k tooltip"
-                >?</span
-              >
-            </label>
-            <div class="range">
-              <input id="topK" type="range" min="1" max="5" value="3" />
-              <span id="topKBadge" class="range-badge">3</span>
-            </div>
-          </div>
-
-          <div class="meta">
-            <div class="meta-item">
-              <span class="meta-label">
-                <span class="label-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M4 4h16v6H4zM4 14h16v6H4z" />
-                  </svg>
-                </span>
-                Database
-              </span>
-              <strong>data/enterprise.db</strong>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">
-                <span class="label-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M5 5h14v4H5zM5 11h14v8H5z" />
-                  </svg>
-                </span>
-                Collection
-              </span>
-              <strong>enterprise_schema_demo</strong>
-            </div>
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="field toggle">
-            <label for="schemaToggle">Show schema context</label>
-            <input id="schemaToggle" type="checkbox" />
-          </div>
-
-          <button id="resetBtn" class="ghost">Clear session</button>
-
-          <div class="divider"></div>
-
-          <div class="history-section">
-            <div class="history-header">
-              <span class="history-title">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="13"
-                  height="13"
-                  style="
-                    vertical-align: -2px;
-                    fill: currentColor;
-                    margin-right: 4px;
-                  "
-                  aria-hidden="true"
-                >
-                  <path d="M13 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7v3l4-4-4-4v3z" />
-                </svg>
-                Query History
-              </span>
-              <button id="clearHistoryBtn" class="ghost small" type="button">
-                Clear
-              </button>
-            </div>
-            <ul id="historyList" class="history-list">
-              <li class="history-empty">No queries yet</li>
-            </ul>
+          <div class="nav-rail__status" id="envStatus">
+            <span class="status-dot"></span>
+            <span>Ready</span>
           </div>
         </div>
-      </aside>
+      </nav>
 
-      <main class="panel panel--chat">
-        <div class="panel-head">
+      <div class="app-main">
+        <header class="topbar">
           <button
-            id="mobileConfigToggle"
-            class="icon-btn mobile-toggle"
             type="button"
-            aria-label="Toggle config"
+            class="icon-btn nav-toggle"
+            id="navToggle"
+            aria-label="Toggle navigation"
           >
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h2>Conversation</h2>
-          <span class="tag">Active</span>
-          <button
-            id="mobileResultsToggle"
-            class="icon-btn mobile-toggle"
-            type="button"
-            aria-label="Toggle results"
-          >
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M4 4h6v16H4zM14 4h6v16h-6z" />
-            </svg>
-          </button>
-        </div>
+          <div class="topbar-titles">
+            <h1 id="pageTitle">Workspace</h1>
+            <p class="topbar-subtitle" id="pageSubtitle">
+              Ask a business question in plain English.
+            </p>
+          </div>
+          <div class="topbar-actions" id="topbarActions"></div>
+        </header>
 
-        <div id="chat" class="chat"></div>
-        <div id="chatEmpty" class="empty">
-          Ask a business question to get started.
-        </div>
+        <main class="page-container">
+          <!-- ── Workspace page ─────────────────────────────────────── -->
+          <section class="page page-workspace" data-page="workspace" id="page-workspace">
+            <div class="conversation-column">
+              <div class="conversation" id="chat">
+                <div class="conversation-empty" id="chatEmpty">
+                  <h2>Ask a business question to get started</h2>
+                  <p>Try an example below, or type your own question in plain English.</p>
+                  <div class="example-chip-row" id="exampleChips"></div>
+                </div>
+              </div>
 
-        <div class="composer">
-          <textarea id="question" class="input-area" placeholder=""></textarea>
-          <div id="typingIndicator" class="typing hidden">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span>Assistant is thinking...</span>
-          </div>
-          <div class="composer-actions">
-            <button id="examplesBtn" class="ghost small" aria-haspopup="dialog">
-              Show examples
-            </button>
-            <button id="sendBtn" class="primary">Run query</button>
-          </div>
-          <div id="examplesPopover" class="popover hidden" role="dialog">
-            <div class="popover-head">Example queries</div>
-            <div id="examplesList" class="example-grid"></div>
-          </div>
-        </div>
-      </main>
-
-      <section class="panel panel--output" id="resultsPanel">
-        <div class="panel-head">
-          <div>
-            <h2>Results</h2>
-            <p class="panel-subtitle" id="resultLabel">Result #0</p>
-          </div>
-          <span class="tag" id="statusTag">Idle</span>
-        </div>
-
-        <div id="errorCard" class="card card--error hidden" data-card="error">
-          <div class="card-header">
-            <h3 class="card-title">Error</h3>
-            <button
-              class="card-toggle"
-              data-toggle="error"
-              aria-expanded="true"
-            >
-              Collapse
-            </button>
-          </div>
-          <div class="card-divider"></div>
-          <div class="card-body">
-            <div class="error-banner">
-              <span class="error-icon">!</span>
-              <span id="errorMessage"></span>
+              <form class="composer" id="composerForm">
+                <div class="composer-row">
+                  <textarea
+                    id="question"
+                    class="composer-input"
+                    rows="1"
+                    placeholder="Ask about your data..."
+                  ></textarea>
+                  <button type="button" class="icon-btn" id="examplesBtn" aria-haspopup="dialog" title="Example questions">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18" /></svg>
+                  </button>
+                  <button type="submit" class="btn btn-primary" id="sendBtn">Run</button>
+                </div>
+                <div class="composer-meta">
+                  <span class="composer-hint">Enter to send · Shift+Enter for a new line</span>
+                </div>
+                <div class="popover hidden" id="examplesPopover" role="dialog" aria-label="Example questions">
+                  <div class="popover-head">Example questions</div>
+                  <div class="example-grid" id="examplesList"></div>
+                </div>
+              </form>
             </div>
-            <details class="error-details">
-              <summary>View raw error</summary>
-              <pre id="errorTrace" class="code muted"></pre>
-            </details>
-            <button id="errorRetryBtn" class="primary">Retry</button>
-          </div>
-        </div>
 
-        <div class="card" data-card="status" data-collapsed="false">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">Status pipeline</h3>
-              <p class="card-meta" id="statusMeta">Waiting for a question</p>
-            </div>
-            <button
-              class="card-toggle"
-              data-toggle="status"
-              aria-expanded="true"
-            >
-              Collapse
-            </button>
-          </div>
-          <div class="card-divider"></div>
-          <div class="card-body">
-            <div id="status-container" class="status-line">
-              <span id="status-text"></span>
-              <span id="confidence-score" class="confidence"></span>
-            </div>
-            <ol id="statusStepper" class="stepper"></ol>
-          </div>
-        </div>
+            <aside class="inspector-column surface-card" id="inspectorColumn">
+              <div class="inspector-head">
+                <div class="inspector-head-row">
+                  <h2 id="inspectorTitle">Result #0</h2>
+                  <span class="pill pill-neutral" id="statusPill">Idle</span>
+                </div>
+                <p class="hint" id="inspectorSubtitle">Run a question to see results here.</p>
+              </div>
 
-        <div class="card" data-card="sql" data-collapsed="true">
-          <div class="card-header">
-            <h3 class="card-title">Generated SQL</h3>
-            <button class="card-toggle" data-toggle="sql" aria-expanded="false">
-              Expand
-            </button>
-          </div>
-          <div class="card-divider"></div>
-          <div class="card-body">
-            <textarea id="sqlEditor"></textarea>
-            <div class="editor-actions">
-              <button id="copySqlBtn" class="ghost small">Copy SQL</button>
-              <button id="rerunSqlBtn" class="primary small">
-                Re-run edited query
+              <div class="error-banner hidden" id="errorBanner">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" />
+                </svg>
+                <span id="errorMessage"></span>
+                <button type="button" class="btn btn-sm btn-ghost" id="errorRetryBtn">Retry</button>
+              </div>
+
+              <nav class="inspector-tabs" id="inspectorTabs">
+                <button type="button" class="inspector-tab active" data-tab="answer">Answer</button>
+                <button type="button" class="inspector-tab" data-tab="data">Data</button>
+                <button type="button" class="inspector-tab" data-tab="sql">SQL</button>
+                <button type="button" class="inspector-tab" data-tab="quality">Quality</button>
+                <button type="button" class="inspector-tab" data-tab="schema">Schema</button>
+              </nav>
+
+              <div class="inspector-body">
+                <div class="inspector-pane active" data-pane="answer">
+                  <ol class="stepper" id="statusStepper"></ol>
+                  <p class="summary-text" id="summaryText"></p>
+                  <div id="chartContainer"></div>
+                </div>
+
+                <div class="inspector-pane" data-pane="data">
+                  <div class="data-toolbar">
+                    <button type="button" class="btn btn-sm btn-ghost" id="downloadCsvBtn">Download CSV</button>
+                    <button type="button" class="btn btn-sm btn-ghost" id="shareLinkBtn">Copy link</button>
+                    <button type="button" class="btn btn-sm btn-ghost" id="fullscreenBtn">Full screen</button>
+                  </div>
+                  <div class="data-table-wrap" id="table"></div>
+                  <p class="row-count" id="rowCount"></p>
+                </div>
+
+                <div class="inspector-pane" data-pane="sql">
+                  <textarea id="sqlEditor"></textarea>
+                  <div class="editor-actions">
+                    <button type="button" class="btn btn-sm btn-ghost" id="copySqlBtn">Copy SQL</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="rerunSqlBtn">Re-run edited query</button>
+                  </div>
+                  <p class="hint" id="sqlHint"></p>
+                </div>
+
+                <div class="inspector-pane" data-pane="quality" id="qualityPane"></div>
+
+                <div class="inspector-pane" data-pane="schema">
+                  <pre class="code-block" id="schemaBlock">No schema retrieved yet.</pre>
+                </div>
+              </div>
+            </aside>
+          </section>
+
+          <!-- ── History page ───────────────────────────────────────── -->
+          <section class="page page-history hidden" data-page="history" id="page-history">
+            <div class="history-toolbar">
+              <input type="search" id="historySearch" placeholder="Search past questions..." />
+              <div class="history-filter-chips">
+                <button type="button" class="filter-chip active" data-filter="all">All</button>
+                <button type="button" class="filter-chip" data-filter="ok">Successful</button>
+                <button type="button" class="filter-chip" data-filter="error">Failed</button>
+              </div>
+              <button type="button" class="btn btn-sm btn-danger-ghost" id="clearHistoryBtn" style="margin-left: auto">
+                Clear history
               </button>
             </div>
-            <div id="sqlHint" class="hint"></div>
-          </div>
-        </div>
+            <div class="history-table-wrap">
+              <table class="history-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Question</th>
+                    <th>Asked</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+              </table>
+            </div>
+          </section>
 
-        <div class="card" data-card="result" data-collapsed="false">
-          <div class="card-header">
-            <h3 class="card-title">Result preview</h3>
-            <button
-              class="card-toggle"
-              data-toggle="result"
-              aria-expanded="true"
-            >
-              Collapse
-            </button>
-          </div>
-          <div class="card-divider"></div>
-          <div class="card-body">
-            <div id="table" class="table"></div>
-            <div class="action-toolbar">
-              <button
-                id="downloadCsvBtn"
-                class="icon-btn"
-                aria-label="Download CSV"
-                data-tooltip="Download CSV"
-                title="Download CSV"
-              >
-                <span class="icon">&#8681;</span>
-              </button>
-              <button
-                id="toolbarCopySqlBtn"
-                class="icon-btn"
-                aria-label="Copy SQL"
-                data-tooltip="Copy SQL"
-                title="Copy SQL"
-              >
-                <span class="icon">&#128203;</span>
-              </button>
-              <button
-                id="shareLinkBtn"
-                class="icon-btn"
-                aria-label="Copy shareable link"
-                data-tooltip="Copy shareable link"
-                title="Copy shareable link"
-              >
-                <span class="icon">&#128279;</span>
-              </button>
-              <button
-                id="fullscreenBtn"
-                class="icon-btn"
-                aria-label="Open in full screen"
-                data-tooltip="Open in full screen"
-                title="Open in full screen"
-              >
-                <span class="icon">&#9974;</span>
+          <!-- ── Schema page ────────────────────────────────────────── -->
+          <section class="page page-schema hidden" data-page="schema" id="page-schema">
+            <div class="meta-grid">
+              <div class="surface-card meta-card">
+                <div class="meta-card-label">Database</div>
+                <div class="meta-card-value">data/enterprise.db</div>
+              </div>
+              <div class="surface-card meta-card">
+                <div class="meta-card-label">Schema collection</div>
+                <div class="meta-card-value">enterprise_schema_demo</div>
+              </div>
+              <div class="surface-card meta-card">
+                <div class="meta-card-label">Retrieval strategy</div>
+                <div class="meta-card-value">Top-k similarity search</div>
+              </div>
+            </div>
+            <div class="surface-card schema-block-card">
+              <h3>Retrieved schema context</h3>
+              <p class="hint">
+                Shows the table schemas retrieved for your most recent question. The agent only
+                sends these relevant tables to the model, not the full database schema.
+              </p>
+              <pre class="code-block" id="schemaPageBlock">Ask a question in the Workspace to see retrieved schema here.</pre>
+            </div>
+          </section>
+
+          <!-- ── Settings page ──────────────────────────────────────── -->
+          <section class="page page-settings hidden" data-page="settings" id="page-settings">
+            <div class="surface-card settings-card">
+              <h3>Model provider</h3>
+              <p class="settings-card-desc">Choose which LLM answers your questions and generates SQL.</p>
+              <div class="field">
+                <label for="provider">LLM provider</label>
+                <select id="provider">
+                  <option value="gemini">Gemini</option>
+                  <option value="groq">Groq</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="apiKey">API key</label>
+                <div class="input-with-action">
+                  <input id="apiKey" type="password" placeholder="Paste key (optional)" autocomplete="off" />
+                  <button type="button" class="icon-btn" id="toggleApiKey" aria-label="Toggle API key visibility">
+                    <svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                  </button>
+                </div>
+                <p class="hint">If left empty, the server falls back to its configured environment variables.</p>
+              </div>
+            </div>
+
+            <div class="surface-card settings-card">
+              <h3>Retrieval</h3>
+              <p class="settings-card-desc">Controls how many relevant tables are retrieved for each question.</p>
+              <div class="range-field">
+                <label for="topK">Schema top-k</label>
+                <div class="range-row">
+                  <input id="topK" type="range" min="1" max="5" value="3" />
+                  <span class="range-badge" id="topKBadge">3</span>
+                </div>
+                <p class="hint">Higher values add more table context but slow down responses.</p>
+              </div>
+            </div>
+
+            <div class="surface-card settings-card">
+              <h3>Appearance</h3>
+              <div class="switch-field">
+                <label for="themeSwitch">Dark mode</label>
+                <input type="checkbox" class="switch" id="themeSwitch" />
+              </div>
+            </div>
+
+            <div class="surface-card settings-card">
+              <h3>Session</h3>
+              <p class="settings-card-desc">Remove every question, answer and history entry from this browser session.</p>
+              <button type="button" class="btn btn-danger-ghost" id="resetBtn" style="justify-self: start">
+                Clear conversation &amp; history
               </button>
             </div>
-          </div>
-        </div>
-
-        <div class="card" data-card="schema" data-collapsed="true">
-          <div class="card-header">
-            <h3 class="card-title">Schema context</h3>
-            <button
-              class="card-toggle"
-              data-toggle="schema"
-              aria-expanded="false"
-            >
-              Expand
-            </button>
-          </div>
-          <div class="card-divider"></div>
-          <div class="card-body">
-            <pre id="schemaBlock" class="code muted"></pre>
-          </div>
-        </div>
-      </section>
+          </section>
+        </main>
+      </div>
     </div>
   </body>
 </html>

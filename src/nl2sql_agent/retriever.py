@@ -244,6 +244,177 @@ def _find_shortest_path(
     return None
 
 
+def _semantic_search(collection: Any, query_embedding: list[Any], top_k: int) -> dict[str, Any]:
+    return collection.query(
+        query_embeddings=query_embedding,
+        n_results=top_k * 2,
+        include=["documents", "metadatas", "distances"],
+    )
+
+
+def _keyword_search(collection: Any, query: str, top_k: int) -> dict[str, Any]:
+    all_docs_from_db = collection.get(include=["documents"])
+    corpus = all_docs_from_db.get("documents", [])
+    tokenized_corpus = [doc.lower().split() for doc in corpus]
+    bm25 = BM25Okapi(tokenized_corpus)
+
+    tokenized_query = query.lower().split()
+    bm25_scores = bm25.get_scores(tokenized_query)
+    top_bm25_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:top_k * 2]
+
+    return {
+        "ids": [[all_docs_from_db["ids"][i] for i in top_bm25_indices]],
+        "scores": [[bm25_scores[i] for i in top_bm25_indices]],
+    }
+
+
+def _rerank_with_rrf(semantic_results: dict[str, Any], bm25_results: dict[str, Any]) -> dict[str, float]:
+    ranked_list: dict[str, float] = {}
+    rrf_constant = 60
+
+    semantic_ids = semantic_results.get("ids", [])
+    if semantic_ids:
+        for rank, doc_id in enumerate(semantic_ids[0]):
+            ranked_list[doc_id] = ranked_list.get(doc_id, 0.0) + (1 / (rrf_constant + rank + 1))
+
+    bm25_ids = bm25_results.get("ids", [])
+    if bm25_ids:
+        for rank, doc_id in enumerate(bm25_ids[0]):
+            ranked_list[doc_id] = ranked_list.get(doc_id, 0.0) + (1 / (rrf_constant + rank + 1))
+
+    return ranked_list
+
+
+def _average_confidence(ranked_list: dict[str, float], top_fused_ids: list[str]) -> float:
+    max_score = max(ranked_list.values()) if ranked_list else 1.0
+    top_scores = [ranked_list[doc_id] for doc_id in top_fused_ids]
+    return (sum(top_scores) / len(top_scores)) / max_score if top_scores else 0.0
+
+
+def _load_graph_metadatas(collection: Any, fallback_metadatas: list[Any]) -> list[dict[str, Any]]:
+    try:
+        all_elements = collection.get(include=["metadatas"])
+        all_metadatas = all_elements.get("metadatas", [])
+    except Exception as exc:
+        logger.warning("Could not fetch all metadatas for schema graph: %s", exc)
+        all_metadatas = []
+
+    normalized = [m for m in all_metadatas if isinstance(m, dict)]
+    if normalized:
+        return normalized
+
+    return [m for m in fallback_metadatas if isinstance(m, dict)]
+
+
+def _get_or_build_graph(collection_name: str, all_metadatas: list[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    graph = _FK_GRAPH_CACHE.get(collection_name)
+    if graph is None:
+        graph = _build_fk_graph(all_metadatas)
+        _FK_GRAPH_CACHE[collection_name] = graph
+    return graph
+
+
+def _normalize_join_desc(step: dict[str, str]) -> str:
+    t_a = step["from_table"]
+    c_a = step["from_col"]
+    t_b = step["to_table"]
+    c_b = step["to_col"]
+    return f"{t_a}.{c_a} = {t_b}.{c_b}" if t_a < t_b else f"{t_b}.{c_b} = {t_a}.{c_a}"
+
+
+def _collect_join_metadata(
+    graph: dict[str, list[dict[str, str]]],
+    retrieved_tables: list[str],
+) -> tuple[set[str], set[str]]:
+    path_tables: set[str] = set()
+    suggested_joins: set[str] = set()
+
+    for i in range(len(retrieved_tables)):
+        for j in range(i + 1, len(retrieved_tables)):
+            t1 = retrieved_tables[i]
+            t2 = retrieved_tables[j]
+            path = _find_shortest_path(graph, t1, t2)
+            if path and len(path) <= MAX_JOIN_PATH_LENGTH:
+                for step in path:
+                    path_tables.add(step["from_table"])
+                    path_tables.add(step["to_table"])
+                    suggested_joins.add(_normalize_join_desc(step))
+
+    return path_tables, suggested_joins
+
+
+def _limit_intermediate_tables(intermediate_tables: set[str]) -> set[str]:
+    if len(intermediate_tables) <= MAX_INTERMEDIATE_TABLES:
+        return intermediate_tables
+
+    logger.info(
+        "Trimming intermediate tables from %d to %d",
+        len(intermediate_tables),
+        MAX_INTERMEDIATE_TABLES,
+    )
+    return set(sorted(intermediate_tables)[:MAX_INTERMEDIATE_TABLES])
+
+
+def _fetch_intermediate_schema_docs(
+    collection: Any,
+    intermediate_tables: set[str],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    if not intermediate_tables:
+        return [], []
+
+    logger.info("Retrieving schemas for intermediate join-path tables: %s", list(intermediate_tables))
+    try:
+        res = collection.get(ids=list(intermediate_tables), include=["documents", "metadatas"])
+        int_docs = res.get("documents", []) or []
+        int_metadatas = res.get("metadatas", []) or []
+        return int_docs, int_metadatas
+    except Exception as exc:
+        logger.error("Failed to retrieve intermediate schemas: %s", exc)
+        return [], []
+
+
+def _build_context_chunks(
+    documents: list[str],
+    metadatas: list[Any],
+    int_docs: list[str],
+    int_metadatas: list[dict[str, Any]],
+) -> list[str]:
+    chunks: list[str] = []
+
+    for index, document in enumerate(documents, start=1):
+        metadata = metadatas[index - 1] if index - 1 < len(metadatas) else {}
+        table_name = metadata.get("table_name", f"table_{index}") if isinstance(metadata, dict) else f"table_{index}"
+        chunks.append(f"[Schema {index}] {table_name}\n{document}\n")
+
+    for idx, int_doc in enumerate(int_docs, start=len(documents) + 1):
+        int_meta_idx = idx - len(documents) - 1
+        int_meta = int_metadatas[int_meta_idx] if int_meta_idx < len(int_metadatas) else {}
+        table_name = int_meta.get("table_name", f"table_{idx}") if isinstance(int_meta, dict) else f"table_{idx}"
+        chunks.append(f"[Schema {idx} - Intermediate Join Path Table] {table_name}\n{int_doc}\n")
+
+    return chunks
+
+
+def _append_join_hints(context: str, suggested_joins: set[str]) -> str:
+    if not suggested_joins:
+        return context
+
+    if len(suggested_joins) > MAX_JOIN_HINTS:
+        logger.info(
+            "Trimming suggested join hints from %d to %d",
+            len(suggested_joins),
+            MAX_JOIN_HINTS,
+        )
+        suggested_joins = set(sorted(suggested_joins)[:MAX_JOIN_HINTS])
+
+    suggested_join_paths_str = (
+        "\nSuggested Join Paths:\n"
+        + "\n".join(f"- {join_hint}" for join_hint in sorted(suggested_joins))
+        + "\n"
+    )
+    return context + "\n" + suggested_join_paths_str
+
+
 def retrieve_relevant_schemas(
     query: str,
     collection_name: str,
@@ -261,52 +432,17 @@ def retrieve_relevant_schemas(
 
     # --- 1. Semantic Search (ChromaDB) ---
     try:
-        semantic_results = collection.query(
-            query_embeddings=query_embedding,
-            n_results=top_k * 2,  # Retrieve more to allow for reranking
-            include=["documents", "metadatas", "distances"],
-        )
+        semantic_results = _semantic_search(collection, query_embedding, top_k)
     except Exception as exc:
         logger.error("Schema retrieval failed: %s", exc)
         raise
 
     # --- 2. Keyword Search (BM25) ---
-    all_docs_from_db = collection.get(include=["documents"])
-    corpus = all_docs_from_db.get("documents", [])
-    tokenized_corpus = [doc.lower().split() for doc in corpus]
-    bm25 = BM25Okapi(tokenized_corpus)
-
-    tokenized_query = query.lower().split()
-    bm25_scores = bm25.get_scores(tokenized_query)
-
-    # Get top-k results for BM25
-    top_bm25_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:top_k * 2]
-
-    bm25_results = {
-        "ids": [[all_docs_from_db["ids"][i] for i in top_bm25_indices]],
-        "scores": [[bm25_scores[i] for i in top_bm25_indices]]
-    }
+    bm25_results = _keyword_search(collection, query, top_k)
 
     # --- 3. Reranking with Reciprocal Rank Fusion (RRF) ---
-    ranked_list = {}
-    k = 60  # RRF constant
-
-    # Process semantic results
-    if semantic_results["ids"]:
-        for rank, doc_id in enumerate(semantic_results["ids"][0]):
-            if doc_id not in ranked_list:
-                ranked_list[doc_id] = 0
-            ranked_list[doc_id] += 1 / (k + rank + 1)
-
-    # Process keyword results
-    if bm25_results["ids"]:
-        for rank, doc_id in enumerate(bm25_results["ids"][0]):
-            if doc_id not in ranked_list:
-                ranked_list[doc_id] = 0
-            ranked_list[doc_id] += 1 / (k + rank + 1)
-
+    ranked_list = _rerank_with_rrf(semantic_results, bm25_results)
     sorted_fused_results = sorted(ranked_list.keys(), key=lambda x: ranked_list[x], reverse=True)
-
     top_fused_ids = sorted_fused_results[:top_k]
 
     if not top_fused_ids:
@@ -324,11 +460,7 @@ def retrieve_relevant_schemas(
     if not documents:
         return "No schema documents were returned from ChromaDB after reranking.", 0.0
 
-    # Calculate average confidence score from RRF
-    # Normalize the RRF scores to a 0-1 range for a confidence value
-    max_score = max(ranked_list.values()) if ranked_list else 1.0
-    top_scores = [ranked_list[doc_id] for doc_id in top_fused_ids]
-    avg_confidence = (sum(top_scores) / len(top_scores)) / max_score if top_scores else 0.0
+    avg_confidence = _average_confidence(ranked_list, top_fused_ids)
 
     # Join path awareness
     retrieved_tables = [
@@ -337,92 +469,16 @@ def retrieve_relevant_schemas(
         if isinstance(m, dict) and m.get("table_name")
     ]
 
-    # Retrieve all metadatas to build the full schema graph
-    try:
-        all_elements = collection.get(include=["metadatas"])
-        all_metadatas = all_elements.get("metadatas", [])
-    except Exception as exc:
-        logger.warning("Could not fetch all metadatas for schema graph: %s", exc)
-        all_metadatas = []
+    all_metadatas = _load_graph_metadatas(collection, metadatas)
+    graph = _get_or_build_graph(collection_name, all_metadatas)
+    path_tables, suggested_joins = _collect_join_metadata(graph, retrieved_tables)
 
-    all_metadatas = [m for m in all_metadatas if isinstance(m, dict)]
-    if not all_metadatas:
-        all_metadatas = [m for m in metadatas if isinstance(m, dict)]
+    intermediate_tables = _limit_intermediate_tables(path_tables - set(retrieved_tables))
+    int_docs, int_metadatas = _fetch_intermediate_schema_docs(collection, intermediate_tables)
 
-    graph = _FK_GRAPH_CACHE.get(collection_name)
-    if graph is None:
-        graph = _build_fk_graph(all_metadatas)
-        _FK_GRAPH_CACHE[collection_name] = graph
-
-    path_tables: set[str] = set()
-    suggested_joins: set[str] = set()
-
-    for i in range(len(retrieved_tables)):
-        for j in range(i + 1, len(retrieved_tables)):
-            t1 = retrieved_tables[i]
-            t2 = retrieved_tables[j]
-            path = _find_shortest_path(graph, t1, t2)
-            if path and len(path) <= MAX_JOIN_PATH_LENGTH:
-                for step in path:
-                    path_tables.add(step["from_table"])
-                    path_tables.add(step["to_table"])
-                    # Standardize order to avoid duplicates like A = B and B = A
-                    t_a, c_a, t_b, c_b = step["from_table"], step["from_col"], step["to_table"], step["to_col"]
-                    if t_a < t_b:
-                        join_desc = f"{t_a}.{c_a} = {t_b}.{c_b}"
-                    else:
-                        join_desc = f"{t_b}.{c_b} = {t_a}.{c_a}"
-                    suggested_joins.add(join_desc)
-
-    intermediate_tables = path_tables - set(retrieved_tables)
-    if len(intermediate_tables) > MAX_INTERMEDIATE_TABLES:
-        logger.info(
-            "Trimming intermediate tables from %d to %d",
-            len(intermediate_tables),
-            MAX_INTERMEDIATE_TABLES,
-        )
-        intermediate_tables = set(sorted(intermediate_tables)[:MAX_INTERMEDIATE_TABLES])
-
-    int_docs: list[str] = []
-    int_metadatas: list[dict[str, Any]] = []
-    if intermediate_tables:
-        logger.info("Retrieving schemas for intermediate join-path tables: %s", list(intermediate_tables))
-        try:
-            res = collection.get(ids=list(intermediate_tables), include=["documents", "metadatas"])
-            int_docs = res.get("documents", []) or []
-            int_metadatas = res.get("metadatas", []) or []
-        except Exception as exc:
-            logger.error("Failed to retrieve intermediate schemas: %s", exc)
-
-    chunks: list[str] = []
-    # Original retrieved tables
-    for index, document in enumerate(documents, start=1):
-        metadata = metadatas[index - 1] if index - 1 < len(metadatas) else {}
-        table_name = metadata.get("table_name", f"table_{index}")
-        chunks.append(f"[Schema {index}] {table_name}\n{document}\n")
-
-    # Intermediate tables
-    for idx, int_doc in enumerate(int_docs, start=len(documents) + 1):
-        int_meta = int_metadatas[idx - len(documents) - 1] if idx - len(documents) - 1 < len(int_metadatas) else {}
-        table_name = int_meta.get("table_name", f"table_{idx}")
-        chunks.append(f"[Schema {idx} - Intermediate Join Path Table] {table_name}\n{int_doc}\n")
-
+    chunks = _build_context_chunks(documents, metadatas, int_docs, int_metadatas)
     context = "\n".join(chunks)
-
-    if suggested_joins:
-        if len(suggested_joins) > MAX_JOIN_HINTS:
-            logger.info(
-                "Trimming suggested join hints from %d to %d",
-                len(suggested_joins),
-                MAX_JOIN_HINTS,
-            )
-            suggested_joins = set(sorted(list(suggested_joins))[:MAX_JOIN_HINTS])
-        suggested_join_paths_str = (
-            "\nSuggested Join Paths:\n" +
-            "\n".join(f"- {j}" for j in sorted(list(suggested_joins))) +
-            "\n"
-        )
-        context += "\n" + suggested_join_paths_str
+    context = _append_join_hints(context, suggested_joins)
 
     logger.info("Retrieved %d relevant schema documents (original: %d, intermediate: %d)",
                 len(documents) + len(int_docs), len(documents), len(int_docs))

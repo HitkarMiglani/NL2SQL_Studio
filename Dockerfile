@@ -1,9 +1,9 @@
+# syntax=docker/dockerfile:1
 # --- Build stage: install dependencies ---
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -12,10 +12,15 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# CPU-only torch wheels are ~10x smaller/faster to fetch than the default CUDA build
+# that sentence-transformers would otherwise pull in.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
 
 COPY . .
-RUN pip install --no-cache-dir .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps .
 
 RUN useradd --create-home --uid 1000 appuser \
     && mkdir -p /app/data /app/chroma_store \

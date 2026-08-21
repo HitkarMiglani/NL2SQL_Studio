@@ -34,3 +34,21 @@ def test_invalid_int_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("PORT", "not-a-number")
     settings = Settings.from_env()
     assert settings.port == 8001
+
+
+def test_invalid_float_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SCHEMA_CONFIDENCE_THRESHOLD", "not-a-float")
+    settings = Settings.from_env()
+    assert settings.schema_confidence_threshold == 0.5
+
+
+def test_valid_float_env_is_parsed(monkeypatch):
+    monkeypatch.setenv("SCHEMA_CONFIDENCE_THRESHOLD", "0.75")
+    settings = Settings.from_env()
+    assert settings.schema_confidence_threshold == 0.75
+
+
+def test_blank_float_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SCHEMA_CONFIDENCE_THRESHOLD", "   ")
+    settings = Settings.from_env()
+    assert settings.schema_confidence_threshold == 0.5
